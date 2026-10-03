@@ -1,9 +1,13 @@
+from flask import Flask
 import requests
 import urllib3
 import time
+import threading
 from datetime import datetime, timezone
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+app = Flask(__name__)
 
 HANDLE = "kothet06.bsky.social"
 PASSWORD = "37qw-44nv-gmak-v5bh"
@@ -62,39 +66,48 @@ def send_reply(token, did, ref_uri, ref_cid, text):
     except:
         return False
 
-print("🤖 Blue Sky Auto-Reply Bot — Cloud Version")
-print("✅ 24/7 အလုပ်လုပ်နေမည်၊ ဖုန်းပိတ်လည်းရပ်မနေဘူး!\n")
+@app.route('/')
+def home():
+    return "✅ BlueSky Bot — အလုပ်လုပ်နေပါတယ်! 💙"
 
-token, did = login()
-if not token:
-    print("❌ လော့ဂ်အင်မရပါ — စကားဝှက်စစ်ဆေးပါ")
-    exit(1)
+def bot_loop():
+    print("🤖 Blue Sky Auto-Reply Bot — Cloud Version")
+    print("✅ 24/7 အလုပ်လုပ်နေမည်၊ ဖုန်းပိတ်လည်းရပ်မနေဘူး!\n")
 
-for n in get_notifs(token):
-    last_seen.add(n["cid"])
-
-print("✅ စတင်စောင့်ကြည့်နေပြီ...\n")
-
-while True:
     token, did = login()
     if not token:
-        time.sleep(10)
-        continue
-    
+        print("❌ လော့ဂ်အင်မရပါ — စကားဝှက်စစ်ဆေးပါ")
+        return
+
     for n in get_notifs(token):
-        cid = n["cid"]
-        if cid in last_seen:
+        last_seen.add(n["cid"])
+
+    print("✅ စတင်စောင့်ကြည့်နေပြီ...\n")
+
+    while True:
+        token, did = login()
+        if not token:
+            time.sleep(10)
             continue
-        last_seen.add(cid)
         
-        if n.get("reason") in ["reply", "mention"]:
-            user = n["author"]["handle"]
-            msg = n["record"]["text"][:40]
-            print(f"📩 {user}: {msg}...")
+        for n in get_notifs(token):
+            cid = n["cid"]
+            if cid in last_seen:
+                continue
+            last_seen.add(cid)
             
-            ok = send_reply(token, did, n["uri"], cid, REPLY_TEXT)
-            if ok:
-                print(f"✅ ပြန်ပေးပြီးပြီ → {user}\n")
-    
-    time.sleep(CHECK_INTERVAL)
-  
+            if n.get("reason") in ["reply", "mention"]:
+                user = n["author"]["handle"]
+                msg = n["record"]["text"][:40]
+                print(f"📩 {user}: {msg}...")
+                
+                ok = send_reply(token, did, n["uri"], cid, REPLY_TEXT)
+                if ok:
+                    print(f"✅ ပြန်ပေးပြီးပြီ → {user}\n")
+        
+        time.sleep(CHECK_INTERVAL)
+
+threading.Thread(target=bot_loop, daemon=True).start()
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=10000)
