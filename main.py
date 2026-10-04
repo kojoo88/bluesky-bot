@@ -3,6 +3,7 @@ import requests
 import urllib3
 import time
 import threading
+import os
 from datetime import datetime, timezone
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -28,7 +29,8 @@ def login():
             return None, None
         data = resp.json()
         return data["accessJwt"], data["did"]
-    except:
+    except Exception as e:
+        print(f"Login Error: {e}")
         return None, None
 
 def get_notifs(token):
@@ -39,7 +41,8 @@ def get_notifs(token):
             params={"limit": 10}, verify=False, timeout=30
         )
         return resp.json().get("notifications", []) if resp.status_code==200 else []
-    except:
+    except Exception as e:
+        print(f"Notif Error: {e}")
         return []
 
 def send_reply(token, did, ref_uri, ref_cid, text):
@@ -63,12 +66,13 @@ def send_reply(token, did, ref_uri, ref_cid, text):
             }, verify=False, timeout=30
         )
         return resp.status_code == 200
-    except:
+    except Exception as e:
+        print(f"Reply Error: {e}")
         return False
 
 @app.route('/')
 def home():
-    return "✅ BlueSky Bot — အလုပ်လုပ်နေပါတယ်! 💙"
+    return "✅ BlueSky Bot — အလုပ်လုပ်နေပါတယ်! 💙", 200
 
 def bot_loop():
     print("🤖 Blue Sky Auto-Reply Bot — Cloud Version")
@@ -110,4 +114,5 @@ def bot_loop():
 threading.Thread(target=bot_loop, daemon=True).start()
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
