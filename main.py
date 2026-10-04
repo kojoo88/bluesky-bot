@@ -1,14 +1,9 @@
-from flask import Flask
 import requests
 import urllib3
 import time
-import threading
-import os
 from datetime import datetime, timezone
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-app = Flask(__name__)
 
 HANDLE = "kothet06.bsky.social"
 PASSWORD = "37qw-44nv-gmak-v5bh"
@@ -26,11 +21,13 @@ def login():
             verify=False, timeout=30
         )
         if resp.status_code != 200:
+            print(f"❌ လော့ဂ်အင်မအောင်မြင် — Status: {resp.status_code}")
             return None, None
         data = resp.json()
+        print(f"✅ လော့ဂ်အင်အောင်မြင် — {HANDLE}")
         return data["accessJwt"], data["did"]
     except Exception as e:
-        print(f"Login Error: {e}")
+        print(f"❌ အမှား: {e}")
         return None, None
 
 def get_notifs(token):
@@ -40,9 +37,12 @@ def get_notifs(token):
             headers={"Authorization": f"Bearer {token}"},
             params={"limit": 10}, verify=False, timeout=30
         )
-        return resp.json().get("notifications", []) if resp.status_code==200 else []
+        if resp.status_code != 200:
+            print(f"⚠️ အကြောင်းကြားစာမဖတ်နိုင် — Status {resp.status_code}")
+            return []
+        return resp.json().get("notifications", [])
     except Exception as e:
-        print(f"Notif Error: {e}")
+        print(f"⚠️ ဖတ်ရန်အမှား: {e}")
         return []
 
 def send_reply(token, did, ref_uri, ref_cid, text):
@@ -67,52 +67,41 @@ def send_reply(token, did, ref_uri, ref_cid, text):
         )
         return resp.status_code == 200
     except Exception as e:
-        print(f"Reply Error: {e}")
+        print(f"❌ ပြန်ပို့ရန်အမှား: {e}")
         return False
 
-@app.route('/')
-def home():
-    return "✅ BlueSky Bot — အလုပ်လုပ်နေပါတယ်! 💙", 200
+print("🤖 Blue Sky Auto-Reply Bot — စတင်နေပြီ")
 
-def bot_loop():
-    print("🤖 Blue Sky Auto-Reply Bot — Cloud Version")
-    print("✅ 24/7 အလုပ်လုပ်နေမည်၊ ဖုန်းပိတ်လည်းရပ်မနေဘူး!\n")
+token, did = login()
+if not token:
+    print("\n❌ စကားဝှက်စစ်ဆေးပါ — App Password ဖြစ်ရမည်!")
+    exit(1)
 
+for n in get_notifs(token):
+    last_seen.add(n["cid"])
+
+print("✅ စတင်စောင့်ကြည့်နေပြီ...\n")
+
+while True:
     token, did = login()
     if not token:
-        print("❌ လော့ဂ်အင်မရပါ — စကားဝှက်စစ်ဆေးပါ")
-        return
-
+        time.sleep(10)
+        continue
+    
     for n in get_notifs(token):
-        last_seen.add(n["cid"])
-
-    print("✅ စတင်စောင့်ကြည့်နေပြီ...\n")
-
-    while True:
-        token, did = login()
-        if not token:
-            time.sleep(10)
+        cid = n["cid"]
+        if cid in last_seen:
             continue
+        last_seen.add(cid)
         
-        for n in get_notifs(token):
-            cid = n["cid"]
-            if cid in last_seen:
-                continue
-            last_seen.add(cid)
+        reason = n.get("reason", "")
+        if reason in ["reply", "mention"]:
+            user = n["author"]["handle"]
+            msg_text = n["record"]["text"][:40]
+            print(f"📩 {user}: {msg_text}")
             
-            if n.get("reason") in ["reply", "mention"]:
-                user = n["author"]["handle"]
-                msg = n["record"]["text"][:40]
-                print(f"📩 {user}: {msg}...")
-                
-                ok = send_reply(token, did, n["uri"], cid, REPLY_TEXT)
-                if ok:
-                    print(f"✅ ပြန်ပေးပြီးပြီ → {user}\n")
-        
-        time.sleep(CHECK_INTERVAL)
-
-threading.Thread(target=bot_loop, daemon=True).start()
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
+            ok = send_reply(token, did, n["uri"], cid, REPLY_TEXT)
+            if ok:
+                print(f"✅ ပြန်ပေးပြီးပြီ → {user}\n")
+    
+    time.sleep(CHECK_INTERVAL)
